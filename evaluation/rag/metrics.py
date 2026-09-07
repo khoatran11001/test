@@ -1,0 +1,5 @@
+def citation_validity(returned,context_ids): return 1.0 if not returned else sum(x in context_ids for x in returned)/len(returned)
+def citation_precision(returned,relevant): return 1.0 if not returned and not relevant else (0.0 if not returned else sum(x in relevant for x in returned)/len(returned))
+def citation_recall(returned,relevant): return 1.0 if not relevant else len(set(returned)&set(relevant))/len(set(relevant))
+def citation_coverage(returned,answerable): return 1.0 if not answerable else float(bool(returned))
+def unanswerable_accuracy(predicted_insufficient,expected_insufficient): return float(predicted_insufficient==expected_insufficient)

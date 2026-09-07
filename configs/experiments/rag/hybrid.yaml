@@ -1,0 +1,34 @@
+experiment:
+  name: rag_hybrid
+  dataset_version: rag_eval_v1
+  overlap_report_version: abo_reviews_overlap_v1
+sources:
+- product
+- review
+- policy
+retrieval:
+  product_mode: hybrid
+  review_mode: hybrid
+  policy_mode: hybrid
+  product_candidates: 20
+  review_candidates: 40
+  policy_candidates: 20
+fusion:
+  enabled: true
+  method: rrf
+  rrf_k: 60
+reranker:
+  enabled: true
+  model_name: BAAI/bge-reranker-v2-m3
+  top_k: 12
+context:
+  max_documents: 12
+  max_product: 4
+  max_reviews: 5
+  max_policies: 3
+  max_characters: 24000
+llm:
+  provider: openai
+  model: gpt-5-mini
+  schema_version: rag_answer_v1
+  max_generation_attempts: 2

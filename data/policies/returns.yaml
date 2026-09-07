@@ -1,0 +1,11 @@
+policy_id: returns
+version: '2026-09'
+effective_date: '2026-09-01'
+source_url: https://example.invalid/policies/returns
+sections:
+  - section_id: window
+    title: Return Window
+    content: Eligible products may be returned within 30 calendar days when return conditions are met.
+  - section_id: condition
+    title: Return Condition
+    content: Returned products should be in eligible condition with required accessories when applicable.

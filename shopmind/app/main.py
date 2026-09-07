@@ -11,9 +11,19 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from shopmind.app.api.errors import EmbeddingUnavailable, ImageTooLarge, InvalidFilter, InvalidImage, SearchInfrastructureError, UnsupportedSearchMode
+from shopmind.app.api.errors import (
+    EmbeddingUnavailable,
+    ImageTooLarge,
+    InvalidFilter,
+    InvalidImage,
+    SearchInfrastructureError,
+    UnsupportedSearchMode,
+    LLMUnavailable,
+    RAGGenerationUpstreamError,
+)
 from shopmind.app.api.routes.health import router as health_router
 from shopmind.app.api.routes.search import router as search_router
+from shopmind.app.api.routes.rag import router as rag_router
 
 logger = logging.getLogger("shopmind")
 
@@ -50,10 +60,44 @@ def _wire_runtime(app: FastAPI) -> None:
     app.state.embedding_model = embedder.model_name
     app.state.embedding_version = embedder.model_revision
     app.state.max_image_bytes = config.api.max_image_bytes
+    app.state.rag_enabled = bool(config.rag.enabled)
+    app.state.rag_runtime_error = None
+    app.state.rag_service = None
+    if config.rag.enabled:
+        try:
+            from shopmind.app.infrastructure.elasticsearch.knowledge_repository import ElasticsearchKnowledgeRepository
+            from shopmind.app.knowledge.product_retriever import ProductDocumentRetriever
+            from shopmind.app.knowledge.review_retriever import ReviewDocumentRetriever
+            from shopmind.app.knowledge.policy_retriever import PolicyDocumentRetriever
+            from shopmind.app.knowledge.multi_source import MultiSourceRetriever
+            from shopmind.app.rag.fusion import rrf_fuse_documents
+            from shopmind.app.rag.reranker import NoOpDocumentReranker, CrossEncoderDocumentReranker
+            from shopmind.app.rag.context import ContextBuilder
+            from shopmind.app.rag.citations import CitationValidator, CitationResolver
+            from shopmind.app.rag.service import RAGService
+            from shopmind.app.llm.openai_provider import OpenAIProvider
+
+            review_repo = ElasticsearchKnowledgeRepository(client, config.elasticsearch.review_index_alias, source="review")
+            policy_repo = ElasticsearchKnowledgeRepository(client, config.elasticsearch.policy_index_alias, source="policy")
+            product_docs = ProductDocumentRetriever(app.state.search_service, mode=config.rag.retrieval.product_mode, candidate_k=config.rag.retrieval.product_candidates)
+            review_docs = ReviewDocumentRetriever(review_repo, embedder, mode=config.rag.retrieval.review_mode, candidate_k=config.rag.retrieval.review_candidates, rrf_k=config.rag.fusion.rrf_k)
+            policy_docs = PolicyDocumentRetriever(policy_repo, embedder, mode=config.rag.retrieval.policy_mode, candidate_k=config.rag.retrieval.policy_candidates, rrf_k=config.rag.fusion.rrf_k)
+            multi = MultiSourceRetriever({"product":product_docs,"review":review_docs,"policy":policy_docs},{"product":config.rag.retrieval.product_candidates,"review":config.rag.retrieval.review_candidates,"policy":config.rag.retrieval.policy_candidates})
+            reranker = CrossEncoderDocumentReranker(config.rag.reranker.model_name) if config.rag.reranker.enabled else NoOpDocumentReranker()
+            llm = OpenAIProvider(model=config.rag.llm.model, api_key=config.rag.llm.api_key)
+            context = ContextBuilder(config.rag.context.max_documents,{"product":config.rag.context.max_product,"review":config.rag.context.max_reviews,"policy":config.rag.context.max_policies},config.rag.context.max_characters)
+            app.state.rag_service = RAGService(multi, rrf_fuse_documents, reranker, context, llm, CitationValidator(), CitationResolver(), config.rag.llm.max_generation_attempts)
+            app.state.review_repository = review_repo
+            app.state.policy_repository = policy_repo
+            app.state.rag_llm = llm
+            app.state.rag_reranker = reranker
+        except Exception as exc:
+            logger.exception("rag runtime initialization failed")
+            app.state.rag_runtime_error = exc
     app.state.runtime_error = None
 
 
-def create_app(*, search_service: Any | None = None, repository: Any | None = None, embedder: Any | None = None, index_alias: str = "products", max_image_bytes: int = 5 * 1024 * 1024, auto_wire: bool = True) -> FastAPI:
+def create_app(*, search_service: Any | None = None, repository: Any | None = None, embedder: Any | None = None, index_alias: str = "products", max_image_bytes: int = 5 * 1024 * 1024, rag_service: Any | None = None, auto_wire: bool = True) -> FastAPI:
     if max_image_bytes <= 0:
         raise ValueError("max_image_bytes must be positive")
 
@@ -76,6 +120,13 @@ def create_app(*, search_service: Any | None = None, repository: Any | None = No
     app.state.embedding_model = getattr(embedder, "model_name", None)
     app.state.embedding_version = getattr(embedder, "model_revision", None)
     app.state.runtime_error = None
+    app.state.rag_service = rag_service
+    app.state.rag_enabled = rag_service is not None
+    app.state.rag_runtime_error = None
+    app.state.review_repository = None
+    app.state.policy_repository = None
+    app.state.rag_llm = None
+    app.state.rag_reranker = None
 
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next):
@@ -113,8 +164,35 @@ def create_app(*, search_service: Any | None = None, repository: Any | None = No
     async def infrastructure_error_handler(request: Request, exc: SearchInfrastructureError):
         return JSONResponse(status_code=503, content=_error_body(request, "search_infrastructure_unavailable", str(exc)))
 
+    from shopmind.app.llm.base import InvalidLLMOutput, LLMProviderError
+    from shopmind.app.rag.service import ContextConstructionError, KnowledgeRetrievalUnavailable as RAGKnowledgeRetrievalUnavailable, RAGGenerationError, RerankerUnavailable as RAGRerankerUnavailable
+
+    @app.exception_handler(RAGKnowledgeRetrievalUnavailable)
+    @app.exception_handler(RAGRerankerUnavailable)
+    @app.exception_handler(ContextConstructionError)
+    async def rag_dependency_error_handler(request: Request, exc: Exception):
+        return JSONResponse(status_code=503, content=_error_body(request, "rag_dependency_unavailable", str(exc)))
+
+    @app.exception_handler(LLMProviderError)
+    async def llm_provider_error_handler(request: Request, exc: LLMProviderError):
+        return JSONResponse(status_code=503, content=_error_body(request, "llm_unavailable", str(exc)))
+
+    @app.exception_handler(InvalidLLMOutput)
+    @app.exception_handler(RAGGenerationError)
+    async def rag_output_error_handler(request: Request, exc: Exception):
+        return JSONResponse(status_code=502, content=_error_body(request, "rag_generation_failed", str(exc)))
+
+    @app.exception_handler(LLMUnavailable)
+    async def llm_unavailable_handler(request: Request, exc: LLMUnavailable):
+        return JSONResponse(status_code=503, content=_error_body(request, "llm_unavailable", str(exc)))
+
+    @app.exception_handler(RAGGenerationUpstreamError)
+    async def rag_generation_handler(request: Request, exc: RAGGenerationUpstreamError):
+        return JSONResponse(status_code=502, content=_error_body(request, "rag_generation_failed", str(exc)))
+
     app.include_router(health_router)
     app.include_router(search_router)
+    app.include_router(rag_router)
     return app
 
 

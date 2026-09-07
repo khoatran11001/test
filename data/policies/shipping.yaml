@@ -1,0 +1,8 @@
+policy_id: shipping
+version: '2026-09'
+effective_date: '2026-09-01'
+source_url: https://example.invalid/policies/shipping
+sections:
+  - section_id: shipping_section
+    title: Shipping Policy
+    content: ShopMind experimental shipping policy for research evaluation.

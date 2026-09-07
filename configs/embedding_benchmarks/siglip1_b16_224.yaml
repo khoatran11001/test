@@ -1,0 +1,29 @@
+model:
+  id: siglip1_b16_224
+  provider: siglip1
+  checkpoint: google/siglip-base-patch16-224
+  revision: null
+  preprocessing: fixres
+dataset:
+  version: abo_a2_v1
+  processed_products: data/processed/products.jsonl
+  english_queries: data/evaluation/a2/queries_en.jsonl
+  vietnamese_queries: data/evaluation/a2/queries_vi.jsonl
+  qrels: data/evaluation/a2/qrels.jsonl
+  image_manifest: data/evaluation/a2/image_queries.jsonl
+tasks:
+  top_k: 10
+  candidate_k: 100
+  text_to_text: true
+  text_to_image: true
+  image_to_product: true
+  a3_probe: true
+timing:
+  warmup_batches: 2
+  timed_batches: 5
+bootstrap:
+  seed: 20260907
+  samples: 2000
+  confidence: 0.95
+batch_size: 32
+experiment_index: a2_products_siglip1_b16_224_v1

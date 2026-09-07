@@ -1,0 +1,8 @@
+policy_id: payment
+version: '2026-09'
+effective_date: '2026-09-01'
+source_url: https://example.invalid/policies/payment
+sections:
+  - section_id: payment_section
+    title: Payment Policy
+    content: ShopMind experimental payment policy for research evaluation.

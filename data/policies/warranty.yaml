@@ -1,0 +1,8 @@
+policy_id: warranty
+version: '2026-09'
+effective_date: '2026-09-01'
+source_url: https://example.invalid/policies/warranty
+sections:
+  - section_id: warranty_section
+    title: Warranty Policy
+    content: ShopMind experimental warranty policy for research evaluation.

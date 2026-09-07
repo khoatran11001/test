@@ -1,0 +1,8 @@
+policy_id: refunds
+version: '2026-09'
+effective_date: '2026-09-01'
+source_url: https://example.invalid/policies/refunds
+sections:
+  - section_id: refunds_section
+    title: Refunds Policy
+    content: ShopMind experimental refunds policy for research evaluation.

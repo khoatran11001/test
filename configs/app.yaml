@@ -1,6 +1,8 @@
 elasticsearch:
   url: http://localhost:9200
   index_alias: products
+  review_index_alias: reviews
+  policy_index_alias: policies
 embedding:
   provider: siglip2
   model_name: google/siglip2-base-patch16-224
@@ -16,3 +18,29 @@ reranker:
   enabled: false
 api:
   max_image_bytes: 5242880
+rag:
+  enabled: true
+  retrieval:
+    product_mode: hybrid
+    review_mode: hybrid
+    policy_mode: hybrid
+    product_candidates: 20
+    review_candidates: 40
+    policy_candidates: 20
+  fusion:
+    method: rrf
+    rrf_k: 60
+  reranker:
+    enabled: true
+    model_name: BAAI/bge-reranker-v2-m3
+    top_k: 12
+  context:
+    max_documents: 12
+    max_product: 4
+    max_reviews: 5
+    max_policies: 3
+    max_characters: 24000
+  llm:
+    provider: openai
+    model: gpt-5-mini
+    max_generation_attempts: 2
