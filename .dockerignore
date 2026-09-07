@@ -1,0 +1,10 @@
+.git
+.worktrees
+.env
+.venv
+__pycache__
+.pytest_cache
+data
+runs
+.superpowers
+tests

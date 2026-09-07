@@ -1,0 +1,18 @@
+elasticsearch:
+  url: http://localhost:9200
+  index_alias: products
+embedding:
+  provider: siglip2
+  model_name: google/siglip2-base-patch16-224
+  batch_size: 32
+retrieval:
+  default_mode: hybrid
+  top_k: 10
+  candidate_k: 100
+fusion:
+  method: rrf
+  rrf_k: 60
+reranker:
+  enabled: false
+api:
+  max_image_bytes: 5242880

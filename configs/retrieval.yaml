@@ -1,0 +1,11 @@
+retrieval:
+  default_mode: hybrid
+  top_k: 10
+  candidate_k: 100
+  bm25_candidate_k: 100
+  dense_candidate_k: 100
+fusion:
+  method: rrf
+  rrf_k: 60
+reranker:
+  enabled: false
